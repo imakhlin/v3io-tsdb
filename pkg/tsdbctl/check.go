@@ -50,7 +50,7 @@ func newCheckCommandeer(rootCommandeer *RootCommandeer) *checkCommandeer {
 		RunE: func(cmd *cobra.Command, args []string) error {
 
 			if len(args) == 0 {
-				return errors.New("add require metric name and/or labels")
+				return errors.New("Check requires metric name and labels")
 			}
 
 			commandeer.name = args[0]
@@ -96,7 +96,7 @@ func (cc *checkCommandeer) check() error {
 	input := v3io.GetItemInput{Path: objPath, AttributeNames: allAtters}
 	resp, err := container.Sync.GetItem(&input)
 	if err != nil {
-		return errors.Wrap(err, "GetItems err")
+		return errors.Wrap(err, fmt.Sprintf("GetItem: unable to get %s with labels %s", objPath, lset.String()))
 	}
 
 	// print metadata

@@ -117,17 +117,17 @@ func (ac *addCommandeer) add() error {
 			return err
 		}
 
-		append, err := ac.rootCommandeer.adapter.Appender()
+		appender, err := ac.rootCommandeer.adapter.Appender()
 		if err != nil {
 			return errors.Wrap(err, "failed to create Appender")
 		}
 
-		ref, err := ac.appendMetric(append, lset, tarray, varray, true)
+		ref, err := ac.appendMetric(appender, lset, tarray, varray, true)
 		if err != nil {
 			return err
 		}
 
-		return append.WaitForReady(ref)
+		return appender.WaitForReady(ref)
 	}
 
 	// process a CSV file input
@@ -143,7 +143,7 @@ func (ac *addCommandeer) add() error {
 		errors.Wrap(err, "cant read/process CSV input")
 	}
 
-	append, err := ac.rootCommandeer.adapter.Appender()
+	appender, err := ac.rootCommandeer.adapter.Appender()
 	if err != nil {
 		return errors.Wrap(err, "failed to create Appender")
 	}
@@ -178,7 +178,7 @@ func (ac *addCommandeer) add() error {
 			return err
 		}
 
-		ref, err := ac.appendMetric(append, lset, tarray, varray, false)
+		ref, err := ac.appendMetric(appender, lset, tarray, varray, false)
 		if err != nil {
 			return err
 		}
@@ -188,12 +188,12 @@ func (ac *addCommandeer) add() error {
 	fmt.Println("\nDone!")
 
 	// make sure all writes are committed
-	return ac.waitForWrites(append, &refMap)
+	return ac.waitForWrites(appender, &refMap)
 }
 
 func (ac *addCommandeer) waitForWrites(append tsdb.Appender, refMap *map[uint64]bool) error {
 
-	for ref, _ := range *refMap {
+	for ref := range *refMap {
 		err := append.WaitForReady(ref)
 		if err != nil {
 			return err
@@ -256,8 +256,8 @@ func strToTV(tarr, varr string) ([]int64, []float64, error) {
 		return nil, nil, errors.New("time and value arrays must have the same number of elements")
 	}
 
-	tarray := []int64{}
-	varray := []float64{}
+	var tarray []int64
+	var varray []float64
 
 	for i := 0; i < len(vlist); i++ {
 
