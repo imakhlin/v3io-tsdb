@@ -97,10 +97,11 @@ func (a *SqrAggregator) Aggregate(t int64, v float64) {
 // Minimum Aggregator
 type MinAggregator struct{ FloatAggregator }
 
-func (a *MinAggregator) Clear() { a.val = math.NaN() }
+func (a *MinAggregator) Clear() { a.val = math.MaxFloat64 }
 
 func (a *MinAggregator) Aggregate(t int64, v float64) {
-	if !math.IsNaN(v) && (math.IsNaN(a.val) || v < a.val) {
+	// TODO: replace with NaN when engine will support that syntax
+	if !math.IsNaN(v) && v < a.val {
 		a.val = v
 	}
 }
@@ -111,10 +112,11 @@ func (a *MinAggregator) UpdateExpr(col string, bucket int) string {
 // Maximum Aggregator
 type MaxAggregator struct{ FloatAggregator }
 
-func (a *MaxAggregator) Clear() { a.val = math.NaN() }
+func (a *MaxAggregator) Clear() { a.val = -math.MaxFloat64 }
 
 func (a *MaxAggregator) Aggregate(t int64, v float64) {
-	if !math.IsNaN(v) && (math.IsNaN(a.val) || v > a.val) {
+	// TODO: replace with NaN when engine will support that syntax
+	if !math.IsNaN(v) && v > a.val {
 		a.val = v
 	}
 }
