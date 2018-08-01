@@ -130,7 +130,7 @@ type LastAggregator struct {
 	lastT int64
 }
 
-func (a *LastAggregator) Clear() { a.val = math.NaN() }
+func (a *LastAggregator) Clear() { a.val = -math.MaxFloat64 }
 
 func (a *LastAggregator) Aggregate(t int64, v float64) {
 	if t > a.lastT {
