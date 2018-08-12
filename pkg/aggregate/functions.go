@@ -73,14 +73,14 @@ func (a *FloatAggregator) UpdateExpr(col string, bucket int) string {
 }
 
 func (a *FloatAggregator) InitExpr(col string, buckets int) string {
-	return fmt.Sprintf("_%s_%s=init_array(%d,'double');", col, a.attr, buckets)
+	return fmt.Sprintf("_%s_%s=init_array(%d,'double', %f);", col, a.attr, buckets, math.Inf(int(a.val)))
 }
 
 // Sum Aggregator
 type SumAggregator struct{ FloatAggregator }
 
 func (a *SumAggregator) Aggregate(t int64, v float64) {
-	if !math.IsNaN(v) {
+	if !math.IsInf(v, 1) {
 		a.val += v
 	}
 }
@@ -89,7 +89,7 @@ func (a *SumAggregator) Aggregate(t int64, v float64) {
 type SqrAggregator struct{ FloatAggregator }
 
 func (a *SqrAggregator) Aggregate(t int64, v float64) {
-	if !math.IsNaN(v) {
+	if !math.IsInf(v, 1) {
 		a.val += v * v
 	}
 }
@@ -100,7 +100,7 @@ type MinAggregator struct{ FloatAggregator }
 func (a *MinAggregator) Clear() { a.val = math.Inf(1) }
 
 func (a *MinAggregator) Aggregate(t int64, v float64) {
-	if !math.IsNaN(v) && (math.IsNaN(a.val) || v < a.val) {
+	if !math.IsInf(v, 1) && (math.IsInf(a.val, 1) || v < a.val) {
 		a.val = v
 	}
 }
@@ -114,7 +114,7 @@ type MaxAggregator struct{ FloatAggregator }
 func (a *MaxAggregator) Clear() { a.val = math.Inf(-1) }
 
 func (a *MaxAggregator) Aggregate(t int64, v float64) {
-	if !math.IsNaN(v) && (math.IsNaN(a.val) || v > a.val) {
+	if !math.IsInf(v, -1) && (math.IsInf(a.val, -1) || v > a.val) {
 		a.val = v
 	}
 }
@@ -128,7 +128,7 @@ type LastAggregator struct {
 	lastT int64
 }
 
-func (a *LastAggregator) Clear() { a.val = math.NaN() }
+func (a *LastAggregator) Clear() { a.val = math.Inf(1) }
 
 func (a *LastAggregator) Aggregate(t int64, v float64) {
 	if t > a.lastT {
@@ -137,9 +137,9 @@ func (a *LastAggregator) Aggregate(t int64, v float64) {
 	}
 }
 func (a *LastAggregator) UpdateExpr(col string, bucket int) string {
-	if math.IsNaN(a.val) {
-		// TODO: replace with NaN when engine will support that syntax
-		return fmt.Sprintf("_%s_%s[%d]=%f;", col, a.attr, bucket, -math.MaxFloat64)
+	if math.IsInf(a.val, 1) {
+		// TODO: replace with Inf when engine will support that syntax
+		return fmt.Sprintf("_%s_%s[%d]=%f;", col, a.attr, bucket, math.Inf(1))
 	}
 	return fmt.Sprintf("_%s_%s[%d]=%f;", col, a.attr, bucket, a.val)
 }

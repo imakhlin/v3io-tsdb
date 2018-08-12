@@ -275,9 +275,15 @@ func strToTV(tarr, varr string) ([]int64, []float64, error) {
 
 		var v float64
 		var err error
-		if vlist[i] == "NaN" {
+
+		switch vlist[i] {
+		case "NaN":
 			v = math.NaN()
-		} else {
+		case "+Inf":
+			v = math.Inf(1)
+		case "-Inf":
+			v = math.Inf(-1)
+		default:
 			v, err = strconv.ParseFloat(vlist[i], 64)
 			if err != nil {
 				return nil, nil, errors.Wrap(err, "not a valid float value")

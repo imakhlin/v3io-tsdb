@@ -267,8 +267,15 @@ func (as *AggregateSet) updateCell(aggr AggrType, cell int, val float64) {
 // return the value per aggregate or complex function
 func (as *AggregateSet) GetCellValue(aggr AggrType, cell int) (float64, bool) {
 
-	if cell > as.maxCell || cell >= as.length || !as.validCells[cell] { // TODO: should >Len return NaN or Zero ?
-		return math.NaN(), false
+	if cell > as.maxCell || cell >= as.length || !as.validCells[cell] {
+		switch aggr {
+		case aggrTypeMin:
+			return math.Inf(1), false
+		case aggrTypeMax:
+			return math.Inf(-1), false
+		default:
+			return 0, false
+		}
 	}
 
 	// if no samples in this bucket the result is undefined
