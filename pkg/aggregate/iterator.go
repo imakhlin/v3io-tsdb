@@ -270,9 +270,9 @@ func (as *AggregateSet) GetCellValue(aggr AggrType, cell int) (float64, bool) {
 	if cell > as.maxCell || cell >= as.length || !as.validCells[cell] {
 		switch aggr {
 		case aggrTypeMin:
-			return math.Inf(1), false
+			return math.MaxFloat64, false
 		case aggrTypeMax:
-			return math.Inf(-1), false
+			return -math.MaxFloat64, false
 		default:
 			return 0, false
 		}

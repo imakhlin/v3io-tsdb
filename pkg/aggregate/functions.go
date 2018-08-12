@@ -73,10 +73,7 @@ func (a *FloatAggregator) UpdateExpr(col string, bucket int) string {
 }
 
 func (a *FloatAggregator) InitExpr(col string, buckets int) string {
-	switch a.agg {
-
-	}
-	return fmt.Sprintf("_%s_%s=init_array(%d,'double', %f);", col, a.attr, buckets, math.Inf(int(a.val)))
+	return fmt.Sprintf("_%s_%s=init_array(%d,'double');", col, a.attr, buckets)
 }
 
 // Sum Aggregator
@@ -100,7 +97,7 @@ func (a *SqrAggregator) Aggregate(t int64, v float64) {
 // Minimum Aggregator
 type MinAggregator struct{ FloatAggregator }
 
-func (a *MinAggregator) Clear() { a.val = math.Inf(1) }
+func (a *MinAggregator) Clear() { a.val = math.MaxFloat64 }
 
 func (a *MinAggregator) Aggregate(t int64, v float64) {
 	if !math.IsInf(v, 1) && (math.IsInf(a.val, 1) || v < a.val) {
@@ -114,7 +111,7 @@ func (a *MinAggregator) UpdateExpr(col string, bucket int) string {
 // Maximum Aggregator
 type MaxAggregator struct{ FloatAggregator }
 
-func (a *MaxAggregator) Clear() { a.val = math.Inf(-1) }
+func (a *MaxAggregator) Clear() { a.val = -math.MaxFloat64 }
 
 func (a *MaxAggregator) Aggregate(t int64, v float64) {
 	if !math.IsInf(v, -1) && (math.IsInf(a.val, -1) || v > a.val) {
@@ -131,7 +128,7 @@ type LastAggregator struct {
 	lastT int64
 }
 
-func (a *LastAggregator) Clear() { a.val = math.Inf(1) }
+func (a *LastAggregator) Clear() { a.val = math.MaxFloat64 }
 
 func (a *LastAggregator) Aggregate(t int64, v float64) {
 	if t > a.lastT {
@@ -142,7 +139,7 @@ func (a *LastAggregator) Aggregate(t int64, v float64) {
 func (a *LastAggregator) UpdateExpr(col string, bucket int) string {
 	if math.IsInf(a.val, 1) {
 		// TODO: replace with Inf when engine will support that syntax
-		return fmt.Sprintf("_%s_%s[%d]=%f;", col, a.attr, bucket, math.Inf(1))
+		return fmt.Sprintf("_%s_%s[%d]=%f;", col, a.attr, bucket, math.MaxFloat64)
 	}
 	return fmt.Sprintf("_%s_%s[%d]=%f;", col, a.attr, bucket, a.val)
 }
