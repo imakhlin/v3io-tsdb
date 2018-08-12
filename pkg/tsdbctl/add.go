@@ -28,7 +28,6 @@ import (
 	"github.com/v3io/v3io-tsdb/pkg/tsdb"
 	"github.com/v3io/v3io-tsdb/pkg/utils"
 	"io"
-	"math"
 	"os"
 	"sort"
 	"strconv"
@@ -272,22 +271,13 @@ func strToTV(tarr, varr string) ([]int64, []float64, error) {
 	varray := []float64{}
 
 	for i := 0; i < len(vlist); i++ {
-
 		var v float64
 		var err error
 
-		switch vlist[i] {
-		case "NaN":
-			v = math.NaN()
-		case "+Inf":
-			v = math.Inf(1)
-		case "-Inf":
-			v = math.Inf(-1)
-		default:
-			v, err = strconv.ParseFloat(vlist[i], 64)
-			if err != nil {
-				return nil, nil, errors.Wrap(err, "not a valid float value")
-			}
+		// Note, following are also valid inputs: -Inf, -Infinity, +Inf, +Infinity, NaN
+		v, err = strconv.ParseFloat(vlist[i], 64)
+		if err != nil {
+			return nil, nil, errors.Wrap(err, "not a valid float value")
 		}
 
 		varray = append(varray, v)

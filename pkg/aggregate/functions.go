@@ -73,6 +73,9 @@ func (a *FloatAggregator) UpdateExpr(col string, bucket int) string {
 }
 
 func (a *FloatAggregator) InitExpr(col string, buckets int) string {
+	switch a.agg {
+
+	}
 	return fmt.Sprintf("_%s_%s=init_array(%d,'double', %f);", col, a.attr, buckets, math.Inf(int(a.val)))
 }
 
