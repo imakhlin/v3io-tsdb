@@ -27,7 +27,7 @@ func BenchmarkIngestWithNuclio(b *testing.B) {
 	b.StopTimer()
 	log.SetFlags(0)
 	log.SetOutput(ioutil.Discard)
-	testStartTimeNano := time.Now().UnixNano()
+	testEndTimeMs := time.Now().Unix() * 1000
 
 	var count = 0 // count real number of samples to compare with query result
 
@@ -69,7 +69,7 @@ func BenchmarkIngestWithNuclio(b *testing.B) {
 	if err != nil {
 		b.Fatal("unable to resolve start time. Check configuration.")
 	}
-	testEndTimeMs := testStartTimeNano / int64(time.Millisecond)
+
 	testStartTimeMs := testEndTimeMs - relativeTimeOffsetMs
 
 	sampleTemplates := common.MakeSampleTemplates(

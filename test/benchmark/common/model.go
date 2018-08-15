@@ -8,10 +8,13 @@ import (
 	"github.com/v3io/v3io-tsdb/pkg/tsdb/tsdbtest"
 	"math/rand"
 	"time"
+	"encoding/csv"
+	"strings"
+	"os"
 )
 
 func MakeSamplesModel(namesCount, namesDiversity, labelsCount, labelDiversity, labelValueCount,
-	labelValueDiversity int) map[string]map[string][]string {
+labelValueDiversity int) map[string]map[string][]string {
 	names, err := MakeNamesRange("Name", namesCount, 1, namesDiversity)
 	if err != nil {
 		panic(err)
@@ -63,6 +66,47 @@ func MakeSampleTemplates(model map[string]map[string][]string) []string {
 	}
 
 	return result
+}
+
+func ModelToCSV(model map[string]map[string][]string, timeSeries []int64, fileName string) error {
+	// TODO: find better way to get size of the label values array (assuming that all records have same amount of labels)
+	valSetLength := 0
+	for _, labels := range model {
+		for _, labelValues := range labels {
+			valSetLength = len(labelValues)
+			break
+		}
+		break
+	}
+
+	csvFile, err := os.Create(fileName)
+	defer csvFile.Close()
+	if err != nil {
+		return errors.Wrap(err, fmt.Sprintf("Cannot create csvFile '%s'", fileName))
+	}
+	csvWriter := csv.NewWriter(csvFile)
+	defer csvWriter.Flush()
+
+	record := make([]string, 4)
+	for _, ts := range timeSeries {
+		for name, labels := range model {
+			// Example: proc_net_bytes,"bond=trade0,cati_id=ICTO-29094,iface=p1p1,bondstatus=standby,host=scl06a-0001,envir=prod,direction=out",2040798464615,123.456
+			record[0] = name
+			recordLabels := make([]string, valSetLength)
+			for index := 0; index < valSetLength; index++ {
+				for label, labelValues := range labels {
+					recordLabels[index] = fmt.Sprintf("%s=%s", label, labelValues[index])
+				}
+				record[1] = strings.Join(recordLabels, ",")
+			}
+			record[2] = fmt.Sprintf("%d", ts)
+			record[3] = fmt.Sprintf("%.2f", MakeRandomFloat64())
+
+			csvWriter.Write(record)
+		}
+	}
+
+	return nil
 }
 
 func MakeNamesRange(prefix string, count, minIndex, maxIndex int) ([]string, error) {

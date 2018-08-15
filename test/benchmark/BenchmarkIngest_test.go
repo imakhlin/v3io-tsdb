@@ -11,6 +11,7 @@ import (
 	"log"
 	"testing"
 	"time"
+	"strings"
 )
 
 const metricNamePrefix = "Name_"
@@ -19,7 +20,7 @@ func BenchmarkIngest(b *testing.B) {
 	b.StopTimer()
 	log.SetFlags(0)
 	log.SetOutput(ioutil.Discard)
-	testStartTimeNano := time.Now().UnixNano()
+	testEndTimeMs := time.Now().Unix() * 1000
 
 	var count = 0 // count real number of samples to compare with query result
 
@@ -57,7 +58,7 @@ func BenchmarkIngest(b *testing.B) {
 	if err != nil {
 		b.Fatal("unable to resolve start time. Check configuration.")
 	}
-	testEndTimeMs := testStartTimeNano / int64(time.Millisecond)
+
 	testStartTimeMs := testEndTimeMs - relativeTimeOffsetMs
 	timestampsCount := (testEndTimeMs - testStartTimeMs) / int64(testConfig.SampleStepSize)
 	timestamps := make([]int64, timestampsCount)
@@ -74,14 +75,21 @@ func BenchmarkIngest(b *testing.B) {
 		timestamps[i] = testStartTimeMs + int64(i*testConfig.SampleStepSize)
 	}
 
-	sampleTemplates := common.MakeSampleTemplates(
-		common.MakeSamplesModel(
-			testConfig.NamesCount,
-			testConfig.NamesDiversity,
-			testConfig.LabelsCount,
-			testConfig.LabelsDiversity,
-			testConfig.LabelValuesCount,
-			testConfig.LabelsValueDiversity))
+	model := common.MakeSamplesModel(
+		testConfig.NamesCount,
+		testConfig.NamesDiversity,
+		testConfig.LabelsCount,
+		testConfig.LabelsDiversity,
+		testConfig.LabelValuesCount,
+		testConfig.LabelsValueDiversity)
+
+	sampleTemplates := common.MakeSampleTemplates(model)
+
+	// Create test CSV file for testing CLI - disabled by default
+	csvFileName := strings.TrimSpace(testConfig.CreateCsvAt)
+	if len(csvFileName) > 0 {
+		common.ModelToCSV(model, timestamps, csvFileName)
+	}
 
 	samplesCount := len(sampleTemplates)
 	refs := make([]uint64, samplesCount)

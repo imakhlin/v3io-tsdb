@@ -27,6 +27,7 @@ type BenchmarkIngestConfig struct {
 	AppendOneByOne       bool   `json:"AppendOneByOne,omitempty" yaml:"AppendOneByOne"`
 	BatchSize            int    `json:"BatchSize,omitempty" yaml:"BatchSize"`
 	CleanupAfterTest     bool   `json:"CleanupAfterTest,omitempty" yaml:"CleanupAfterTest"`
+	CreateCsvAt          string `json:"CreateCsvAt,omitempty" yaml:"CreateCsvAt"`
 }
 
 func LoadBenchmarkIngestConfigs() (*BenchmarkIngestConfig, *config.V3ioConfig, error) {
