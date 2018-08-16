@@ -144,6 +144,7 @@ func (p *PartitionManager) TimeToPart(t int64) (*DBPartition, error) {
 					return p.partitions[i], nil
 				}
 			}
+
 		}
 	}
 	return p.headPartition, nil

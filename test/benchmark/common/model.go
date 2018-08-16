@@ -9,8 +9,8 @@ import (
 	"math/rand"
 	"time"
 	"encoding/csv"
-	"strings"
 	"os"
+	"strings"
 )
 
 func MakeSamplesModel(namesCount, namesDiversity, labelsCount, labelDiversity, labelValueCount,
@@ -89,23 +89,28 @@ func ModelToCSV(model map[string]map[string][]string, timeSeries []int64, fileNa
 
 	record := make([]string, 4)
 	for _, ts := range timeSeries {
-		for name, labels := range model {
-			// Example: proc_net_bytes,"bond=trade0,cati_id=ICTO-29094,iface=p1p1,bondstatus=standby,host=scl06a-0001,envir=prod,direction=out",2040798464615,123.456
-			record[0] = name
-			recordLabels := make([]string, valSetLength)
-			for index := 0; index < valSetLength; index++ {
-				for label, labelValues := range labels {
-					recordLabels[index] = fmt.Sprintf("%s=%s", label, labelValues[index])
-				}
-				record[1] = strings.Join(recordLabels, ",")
-			}
-			record[2] = fmt.Sprintf("%d", ts)
-			record[3] = fmt.Sprintf("%.2f", MakeRandomFloat64())
+		for i := 0; i < valSetLength; i++ {
+			for name, labels := range model {
+				// Example: proc_net_bytes,"bond=trade0,cati_id=ICTO-29094,iface=p1p1,bondstatus=standby,host=scl06a-0001,envir=prod,direction=out",123.456,1534360554000
+				record[0] = name
 
-			csvWriter.Write(record)
+				labelKeysLength := len(labels)
+				recordLabels := make([]string, labelKeysLength)
+				j := 0
+				for label, labelValues := range labels {
+					recordLabels[j] = fmt.Sprintf("%s=%s", label, labelValues[i])
+					j++
+				}
+
+				record[1] = strings.Join(recordLabels, ",")
+				// value
+				record[2] = fmt.Sprintf("%.2f", MakeRandomFloat64())
+				// timestamp
+				record[3] = fmt.Sprintf("%d", ts)
+				csvWriter.Write(record)
+			}
 		}
 	}
-
 	return nil
 }
 

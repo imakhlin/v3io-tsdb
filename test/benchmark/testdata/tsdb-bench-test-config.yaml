@@ -38,4 +38,4 @@ CleanupAfterTest: true
 
 # Create CSV input file for testing with CLI. Will be ignored if empty.
 # Example: "/tmp/v3io-tsdb-test-data.csv"
-CreateCsvAt: ""
+CreateCsvAt: "/tmp/v3io-tsdb-test-data.csv"
