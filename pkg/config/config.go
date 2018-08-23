@@ -54,11 +54,19 @@ type V3ioConfig struct {
 	DefaultTimeout int `json:"timeout,omitempty"`
 	// The size of batch to use during ingestion
 	BatchSize int `json:"batchSize,omitempty"`
+	// Size of sample in bytes for worst an best compression scenarios
+	MinimumSampleSize int `json:"minimumSampleSize,omitempty"`
+	MaximumSampleSize int `json:"maximumSampleSize,omitempty"`
+	// Max size of a partition object
+	MaximumPartitionSize int `json:"maximumPartitionSize,omitempty"`
+	// Size of chunk in bytes for worst an best compression scenarios
+	MinimumChunkSize int `json:"minimumChunkSize,omitempty"`
+	MaximumChunkSize int `json:"maximumChunkSize,omitempty"`
 }
 
 type Rollup struct {
-	Aggregators            string `json:"aggregators"`
-	AggregatorsGranularity string `json:"aggregatorsGranularity"`
+	Aggregators            []string `json:"aggregators"`
+	AggregatorsGranularity string   `json:"aggregatorsGranularity"`
 	//["cloud","local"] for the aggregators and sample chucks
 	StorageClass string `json:"storageClass"`
 	//in hours. 0  means no need to save samples

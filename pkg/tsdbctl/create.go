@@ -28,23 +28,21 @@ import (
 	"github.com/v3io/v3io-tsdb/pkg/config"
 	"github.com/v3io/v3io-tsdb/pkg/tsdb"
 	"strconv"
-	"strings"
 )
 
 const schemaVersion = 0
 const defaultStorageClass = "local"
 
 type createCommandeer struct {
-	cmd               *cobra.Command
-	rootCommandeer    *RootCommandeer
-	path              string
-	partitionInterval string
-	storageClass      string
-	chunkInterval     string
-	defaultRollups    string
-	rollupInterval    string
-	shardingBuckets   int
-	sampleRetention   int
+	cmd             *cobra.Command
+	rootCommandeer  *RootCommandeer
+	path            string
+	storageClass    string
+	defaultRollups  string
+	rollupInterval  string
+	shardingBuckets int
+	sampleRetention int
+	sampleRate      string
 }
 
 func newCreateCommandeer(rootCommandeer *RootCommandeer) *createCommandeer {
@@ -62,13 +60,12 @@ func newCreateCommandeer(rootCommandeer *RootCommandeer) *createCommandeer {
 		},
 	}
 
-	cmd.Flags().StringVarP(&commandeer.partitionInterval, "partition-interval", "m", "2d", "time covered per partition")
-	cmd.Flags().StringVarP(&commandeer.chunkInterval, "chunk-interval", "t", "1h", "time in a single chunk")
 	cmd.Flags().StringVarP(&commandeer.defaultRollups, "rollups", "r", "",
 		"Default aggregation rollups, comma seperated: count,avg,sum,min,max,stddev")
 	cmd.Flags().StringVarP(&commandeer.rollupInterval, "rollup-interval", "i", "1h", "aggregation interval")
 	cmd.Flags().IntVarP(&commandeer.shardingBuckets, "sharding-buckets", "b", 8, "number of buckets to split key")
 	cmd.Flags().IntVarP(&commandeer.sampleRetention, "sample-retention", "a", 0, "sample retention in hours")
+	cmd.Flags().StringVar(&commandeer.sampleRate, "rate", "12/m", "sample rate")
 
 	commandeer.cmd = cmd
 
@@ -82,20 +79,27 @@ func (cc *createCommandeer) create() error {
 		return err
 	}
 
-	if err := cc.validateFormat(cc.partitionInterval); err != nil {
-		return errors.Wrap(err, "Failed to parse partition interval")
-	}
-
-	if err := cc.validateFormat(cc.chunkInterval); err != nil {
-		return errors.Wrap(err, "Failed to parse chunk interval")
-	}
-
 	if err := cc.validateFormat(cc.rollupInterval); err != nil {
-		return errors.Wrap(err, "Failed to parse rollup interval")
+		return errors.Wrap(err, "failed to parse rollup interval")
+	}
+
+	rollups, err := aggregate.AggregatorsToStringList(cc.defaultRollups)
+	if err != nil {
+		return errors.Wrap(err, "failed to parse default rollups")
+	}
+
+	rateInHours, err := rateToHours(cc.sampleRate)
+	if err != nil {
+		return errors.Wrap(err, "failed to parse sample rate")
+	}
+
+	chunkInterval, partitionInterval, err := cc.calculatePartitionAndChunkInterval(rateInHours)
+	if err != nil {
+		return errors.Wrap(err, "failed to calculate chunk interval")
 	}
 
 	defaultRollup := config.Rollup{
-		Aggregators:            cc.defaultRollups,
+		Aggregators:            rollups,
 		AggregatorsGranularity: cc.rollupInterval,
 		StorageClass:           defaultStorageClass,
 		SampleRetention:        cc.sampleRetention,
@@ -106,20 +110,19 @@ func (cc *createCommandeer) create() error {
 		Version:             schemaVersion,
 		RollupLayers:        []config.Rollup{defaultRollup},
 		ShardingBuckets:     cc.shardingBuckets,
-		PartitionerInterval: cc.partitionInterval,
-		ChunckerInterval:    cc.chunkInterval,
+		PartitionerInterval: partitionInterval,
+		ChunckerInterval:    chunkInterval,
 	}
 
-	aggrs := strings.Split(cc.defaultRollups, ",")
-	fields, err := aggregate.SchemaFieldFromString(aggrs, "v")
+	fields, err := aggregate.SchemaFieldFromString(rollups, "v")
 	if err != nil {
-		return errors.Wrap(err, "Failed to create aggregators list")
+		return errors.Wrap(err, "failed to create aggregators list")
 	}
 	fields = append(fields, config.SchemaField{Name: "_name", Type: "string", Nullable: false, Items: ""})
 
 	partitionSchema := config.PartitionSchema{
 		Version:                tableSchema.Version,
-		Aggregators:            aggrs,
+		Aggregators:            rollups,
 		AggregatorsGranularity: cc.rollupInterval,
 		StorageClass:           defaultStorageClass,
 		SampleRetention:        cc.sampleRetention,
@@ -135,17 +138,67 @@ func (cc *createCommandeer) create() error {
 	}
 
 	return tsdb.CreateTSDB(cc.rootCommandeer.v3iocfg, &schema)
-
 }
 
 func (cc *createCommandeer) validateFormat(format string) error {
 	interval := format[0 : len(format)-1]
 	if _, err := strconv.Atoi(interval); err != nil {
-		return fmt.Errorf("format is inncorrect, not a number")
+		return errors.New("format is incorrect, not a number")
 	}
 	unit := string(format[len(format)-1])
 	if !(unit == "m" || unit == "d" || unit == "h") {
-		return fmt.Errorf("format is inncorrect, not part of m,d,h")
+		return errors.New("format is incorrect, not part of m,d,h")
 	}
 	return nil
+}
+
+func (cc *createCommandeer) calculatePartitionAndChunkInterval(rateInHours int) (string, string, error) {
+	maxNumberOfEventsPerChunk := cc.rootCommandeer.v3iocfg.MaximumChunkSize / cc.rootCommandeer.v3iocfg.MaximumSampleSize
+	minNumberOfEventsPerChunk := cc.rootCommandeer.v3iocfg.MinimumChunkSize / cc.rootCommandeer.v3iocfg.MinimumSampleSize
+
+	chunkInterval := maxNumberOfEventsPerChunk / rateInHours
+
+	// Make sure the expected chunk size is greater then the supported minimum.
+	if chunkInterval < minNumberOfEventsPerChunk/rateInHours {
+		return "", "", fmt.Errorf(
+			"calculated chunk size is less then minimum, rate - %v/h, calculated chunk interval - %v, minimum size - %v",
+			rateInHours, chunkInterval, cc.rootCommandeer.v3iocfg.MinimumChunkSize)
+	}
+
+	actualCapacityOfChunk := chunkInterval * rateInHours * cc.rootCommandeer.v3iocfg.MaximumSampleSize
+	numberOfChunksInPartition := cc.rootCommandeer.v3iocfg.MaximumPartitionSize / actualCapacityOfChunk
+	partitionInterval := numberOfChunksInPartition * chunkInterval
+	return strconv.Itoa(chunkInterval) + "h", strconv.Itoa(partitionInterval) + "h", nil
+}
+
+func rateToHours(sampleRate string) (int, error) {
+	parsingError := errors.New(`not a valid rate. Accepted pattern: [0-9]+/[hms]. Examples: 12/m`)
+
+	if len(sampleRate) < 3 {
+		return 0, parsingError
+	}
+	if sampleRate[len(sampleRate)-2] != '/' {
+		return 0, parsingError
+	}
+
+	last := sampleRate[len(sampleRate)-1]
+	// get the number ignoring slash and time unit
+	sampleRate = sampleRate[:len(sampleRate)-2]
+	i, err := strconv.Atoi(sampleRate)
+	if err != nil {
+		return 0, errors.Wrap(err, parsingError.Error())
+	}
+	if i <= 0 {
+		return 0, errors.New("rate should be a positive number")
+	}
+	switch last {
+	case 's':
+		return i * 60 * 60, nil
+	case 'm':
+		return i * 60, nil
+	case 'h':
+		return i, nil
+	default:
+		return 0, parsingError
+	}
 }
