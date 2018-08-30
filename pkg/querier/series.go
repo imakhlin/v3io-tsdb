@@ -122,7 +122,7 @@ func (s *V3ioSeries) initSeriesIter() {
 
 		// debug
 		for i, c := range newIterator.chunks {
-			fmt.Printf("Chunk[%d]: %s\n", i, base64.StdEncoding.EncodeToString(c.Bytes()))
+			fmt.Printf("\nChunk[%d] for LSet %s\n%s", i, s.lset, base64.StdEncoding.EncodeToString(c.Bytes()))
 
 			chunk, err := chunkenc.FromData(chunkenc.EncXOR, c.Bytes(), 0)
 			if err != nil {
@@ -131,13 +131,15 @@ func (s *V3ioSeries) initSeriesIter() {
 
 			iter := chunk.Iterator()
 			for iter.Next() {
-				if err = iter.Err(); err != nil {
-					fmt.Printf("\nERROR: corrupted chunk! Error: %v", err)
-					break
-				}
 			}
+
+			if err = iter.Err(); err != nil {
+				fmt.Printf("\nError in chunk[%d] with LSet %s!\nError: %v\n", i, s.lset, err)
+				break
+			}
+
 			if err == nil {
-				fmt.Printf("[Ok]\n\n")
+				fmt.Printf("\n[Ok]\n")
 			}
 		}
 	}

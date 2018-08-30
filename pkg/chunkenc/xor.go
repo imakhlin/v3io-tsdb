@@ -423,7 +423,7 @@ func (it *xorIterator) Next() bool {
 	rv := it.readValue()
 
 	if err := it.Err(); err != nil {
-		it.err = err
+		return false
 	}
 	it.br.padToByte()
 
