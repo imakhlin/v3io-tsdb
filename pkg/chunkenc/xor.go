@@ -56,6 +56,10 @@ package chunkenc
 import (
 	"math"
 	"math/bits"
+	"fmt"
+	"encoding/base64"
+	"time"
+	"github.com/pkg/errors"
 )
 
 // XORChunk holds XOR encoded sample data.
@@ -210,7 +214,7 @@ func (a *xorAppender) Append(t int64, v float64) {
 }
 
 func bitRange(x int64, nbits uint8) bool {
-	return -((1<<(nbits-1))-1) <= x && x <= 1<<(nbits-1)
+	return -((1 << (nbits - 1)) - 1) <= x && x <= 1<<(nbits-1)
 }
 
 func (a *xorAppender) writeVDelta(v float64) {
@@ -289,6 +293,12 @@ func (it *xorIterator) Next() bool {
 			it.err = err
 			return false
 		}
+
+		if err := validateTimestamp(int64(t)); err != nil {
+			it.err = err
+			return false
+		}
+
 		it.t = int64(t)
 		it.val = math.Float64frombits(v)
 
@@ -299,6 +309,11 @@ func (it *xorIterator) Next() bool {
 	// check if this a starting from scratch, signature is 111110xx
 	isRestart := (it.br.PeekByte() & 0xfc) == 0xf8
 
+	if isRestart {
+		// debug only
+		fmt.Printf("\n---> WARN: XOR iterator has been restarted!\nStream content: [%v]\n", base64.StdEncoding.EncodeToString(it.br.stream))
+	}
+
 	if it.numRead == 1 && !isRestart {
 		tDelta, err := it.br.readBits(32)
 		if err != nil {
@@ -306,7 +321,14 @@ func (it *xorIterator) Next() bool {
 			return false
 		}
 		it.tDelta = tDelta
-		it.t = it.t + int64(it.tDelta)
+		t := it.t + int64(it.tDelta)
+
+		if err := validateTimestamp(int64(t)); err != nil {
+			it.err = err
+			return false
+		}
+
+		it.t = t
 
 		rv := it.readValue()
 		it.br.padToByte()
@@ -356,7 +378,13 @@ func (it *xorIterator) Next() bool {
 			it.err = err
 			return false
 		}
+
 		//t = t & ((0x80 << 40) - 1)
+		if err := validateTimestamp(int64(t)); err != nil {
+			it.err = err
+			return false
+		}
+
 		v, err := it.br.readBits(64)
 		if err != nil {
 			it.err = err
@@ -383,12 +411,32 @@ func (it *xorIterator) Next() bool {
 	}
 
 	it.tDelta = uint64(int64(it.tDelta) + dod)
-	it.t = it.t + int64(it.tDelta)
+	t := it.t + int64(it.tDelta)
+
+	if err := validateTimestamp(int64(t)); err != nil {
+		it.err = err
+		return false
+	}
+
+	it.t = t
 
 	rv := it.readValue()
+
+	if err := it.Err(); err != nil {
+		it.err = err
+	}
 	it.br.padToByte()
 
 	return rv
+}
+
+var farFuture = time.Now().AddDate(300, 0, 0).Unix()
+
+func validateTimestamp(tsInMillis int64) error {
+	if tsInMillis/1e3 > farFuture {
+		return errors.Errorf("Invalid date: %s", time.Unix(int64(tsInMillis/1e3), 0).Format(time.RFC3339))
+	}
+	return nil
 }
 
 func (it *xorIterator) readValue() bool {
