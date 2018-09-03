@@ -23,6 +23,7 @@ package appender
 import (
 	"encoding/base64"
 	"fmt"
+	"github.com/pkg/errors"
 	"github.com/v3io/v3io-go-http"
 	"github.com/v3io/v3io-tsdb/pkg/aggregate"
 	"github.com/v3io/v3io-tsdb/pkg/chunkenc"
@@ -201,45 +202,51 @@ func (cs *chunkStore) Append(t int64, v interface{}) {
 }
 
 // return current, previous, or create new  chunk based on sample time
-func (cs *chunkStore) chunkByTime(t int64) *attrAppender {
+func (cs *chunkStore) chunkByTime(t int64) (*attrAppender, error) {
 
 	// sample in the current chunk
 	cur := cs.chunks[cs.curChunk]
 	if cur.inRange(t) {
-		return cur
+		return cur, nil
 	}
 
 	// sample is in the next chunk, need to initialize
 	if cur.isAhead(t) {
 		// time is ahead of this chunk time, advance cur chunk
 		part := cur.partition
-		cur = cs.chunks[cs.curChunk^1]
+		curChunkIndex := cs.curChunk ^ 1
+		cur = cs.chunks[curChunkIndex]
 
 		chunk := chunkenc.NewXORChunk() // TODO: init based on schema, use init function
 		app, err := chunk.Appender()
 		if err != nil {
-			return nil
+			return nil, errors.Wrap(err, fmt.Sprintf("unable to get appender for chunk with time %d", t))
 		}
-		nextPart, _ := part.NextPart(t)
+
+		nextPart, err := part.NextPart(t)
+		if err != nil {
+			return nil, errors.Wrap(err, fmt.Sprintf("unable to get partition for time %d", t))
+		}
+
 		cur.initialize(nextPart, t)
 		cur.appender = app
-		cs.curChunk = cs.curChunk ^ 1
+		cs.curChunk = curChunkIndex
 
-		return cur
+		return cur, nil
 	}
 
 	// if its the first chunk after init we do not allow old updates
 	if (cur.state & chunkStateFirst) != 0 {
-		return nil
+		return nil, errors.Errorf("old updates to first chunk after init are not allowed. Time: %d", t)
 	}
 
 	prev := cs.chunks[cs.curChunk^1]
 	// delayed Appends only allowed to previous chunk or within allowed window
 	if prev.partition != nil && prev.inRange(t) && t > cs.maxTime-maxLateArrivalInterval {
-		return prev
+		return prev, nil
 	}
 
-	return nil
+	return nil, errors.Errorf("delayed appends only allowed to previous chunk or within allowed window. Time: %d", t)
 }
 
 // write all pending samples to DB chunks and aggregators
@@ -285,7 +292,10 @@ func (cs *chunkStore) WriteChunks(mc *MetricsCache, metric *MetricState) (bool, 
 
 		// init activeChunk if nil (when samples are too old), if still too old skip to next sample
 		if activeChunk == nil {
-			activeChunk = cs.chunkByTime(sampleTime)
+			activeChunk, err = cs.chunkByTime(sampleTime)
+			if err != nil {
+				mc.logger.Error(errors.Wrap(err, fmt.Sprintf("unable to get chunk by time. Time: %d", sampleTime)))
+			}
 			if activeChunk == nil {
 				pendingSampleIndex++
 				mc.logger.DebugWith("nil active chunk", "T", sampleTime)
@@ -326,7 +336,10 @@ func (cs *chunkStore) WriteChunks(mc *MetricsCache, metric *MetricState) (bool, 
 		// if the next item is in a new chuck, gen expression and init new chunk
 		if !activeChunk.inRange(nextT) {
 			expr = expr + cs.appendExpression(activeChunk)
-			activeChunk = cs.chunkByTime(nextT)
+			activeChunk, err = cs.chunkByTime(nextT)
+			if err != nil {
+				mc.logger.Error(errors.Wrap(err, fmt.Sprintf("unable to get chunk by time. Time: %d", sampleTime)))
+			}
 		}
 
 		pendingSampleIndex++

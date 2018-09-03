@@ -21,12 +21,12 @@ such restriction.
 package querier
 
 import (
+	"encoding/base64"
+	"fmt"
 	"github.com/v3io/v3io-tsdb/pkg/aggregate"
 	"github.com/v3io/v3io-tsdb/pkg/chunkenc"
 	"github.com/v3io/v3io-tsdb/pkg/utils"
 	"strings"
-	"fmt"
-	"encoding/base64"
 )
 
 // Create a new series from chunks
@@ -93,7 +93,7 @@ func (s *V3ioSeries) initSeriesIter() {
 	}
 
 	newIterator := v3ioSeriesIterator{
-		mint:     s.set.mint, maxt: maxt, chunkTime: s.set.partition.TimePerChunk(),
+		mint: s.set.mint, maxt: maxt, chunkTime: s.set.partition.TimePerChunk(),
 		isCyclic: s.set.partition.IsCyclic()}
 	newIterator.chunks = []chunkenc.Chunk{}
 

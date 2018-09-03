@@ -54,12 +54,12 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 package chunkenc
 
 import (
+	"encoding/base64"
+	"fmt"
+	"github.com/pkg/errors"
 	"math"
 	"math/bits"
-	"fmt"
-	"encoding/base64"
 	"time"
-	"github.com/pkg/errors"
 )
 
 // XORChunk holds XOR encoded sample data.
@@ -82,7 +82,6 @@ func (c *XORChunk) Encoding() Encoding {
 
 // Bytes returns the underlying byte slice of the chunk.
 func (c *XORChunk) Bytes() []byte {
-	//return c.b.getbytes()
 	return c.b.bytes()
 }
 
@@ -92,7 +91,7 @@ func (c *XORChunk) Clear() {
 }
 
 // Appender implements the Chunk interface.
-// new implementation, doesnt read the existing buffer, assume its new
+// new implementation, doesn't read the existing buffer, assume its new
 func (c *XORChunk) Appender() (Appender, error) {
 	a := &xorAppender{c: c, b: c.b, samples: &c.samples}
 	if c.samples == 0 {
@@ -159,6 +158,13 @@ type xorAppender struct {
 	trailing uint8
 }
 
+func (a *xorAppender) String() string {
+	return fmt.Sprintf("Chunk: offset=%d, samples=%d, bytes=%v\n"+
+		"Appender: samples=%d, t=%d, v=%f, tDelta=%d, leading=%d, trailing=%d, bytes=%v",
+		a.c.offset, a.c.samples, a.c.Bytes(),
+		a.samples, a.t, a.v, a.tDelta, a.leading, a.trailing, a.b.bytes())
+}
+
 func (a *xorAppender) Chunk() Chunk {
 	return a.c
 }
@@ -168,7 +174,11 @@ func (a *xorAppender) Append(t int64, v float64) {
 	num := *a.samples
 
 	if num == 0 {
-		// add a signature 11111 to indicate start of cseries in case we put few in the same chunk (append to existing)
+		// add a signature 11111 to indicate start of series in case we put few in the same chunk (append to existing)
+
+		// debug print
+		fmt.Printf("---> INFO: initializing chunk.\nAppender details: %s", a.String())
+
 		a.b.writeBits(0x1f, 5)
 		a.b.writeBits(uint64(t), 51)
 		a.b.writeBits(math.Float64bits(v), 64)
@@ -207,14 +217,14 @@ func (a *xorAppender) Append(t int64, v float64) {
 
 	a.t = t
 	a.v = v
-	(*a.samples)++
+	*a.samples++
 	a.tDelta = tDelta
 
 	a.b.padToByte()
 }
 
 func bitRange(x int64, nbits uint8) bool {
-	return -((1 << (nbits - 1)) - 1) <= x && x <= 1<<(nbits-1)
+	return -((1<<(nbits-1))-1) <= x && x <= 1<<(nbits-1)
 }
 
 func (a *xorAppender) writeVDelta(v float64) {
@@ -362,18 +372,21 @@ func (it *xorIterator) Next() bool {
 	case 0x0e:
 		sz = 20
 	case 0x1e:
-		bits, err := it.br.readBits(32)
+		bitz, err := it.br.readBits(32)
 		if err != nil {
 			it.err = err
 			return false
 		}
 
-		dod = int64(int32(bits))
+		dod = int64(int32(bitz))
 	case 0x1f:
 		// added this case to allow append of a new Gorilla series on an existing chunk (restart from t0)
 
+		// debug print
+		fmt.Printf("<--- WARN: restart has been detected for xor iterator it.[leading=%d, trailing=%d, numRead=%d, numTotal=%d, val=%f]",
+			it.leading, it.trailing, it.numRead, it.numTotal, it.val)
+
 		t, err := it.br.readBits(51)
-		//t, err := binary.ReadVarint(it.br)
 		if err != nil {
 			it.err = err
 			return false
@@ -398,16 +411,16 @@ func (it *xorIterator) Next() bool {
 	}
 
 	if sz != 0 {
-		bits, err := it.br.readBits(int(sz))
+		bitz, err := it.br.readBits(int(sz))
 		if err != nil {
 			it.err = err
 			return false
 		}
-		if bits > (1 << (sz - 1)) {
+		if bitz > (1 << (sz - 1)) {
 			// or something
-			bits = bits - (1 << sz)
+			bitz = bitz - (1 << sz)
 		}
-		dod = int64(bits)
+		dod = int64(bitz)
 	}
 
 	it.tDelta = uint64(int64(it.tDelta) + dod)
@@ -458,19 +471,19 @@ func (it *xorIterator) readValue() bool {
 			// reuse leading/trailing zero bits
 			// it.leading, it.trailing = it.leading, it.trailing
 		} else {
-			bits, err := it.br.readBits(5)
+			bitz, err := it.br.readBits(5)
 			if err != nil {
 				it.err = err
 				return false
 			}
-			it.leading = uint8(bits)
+			it.leading = uint8(bitz)
 
-			bits, err = it.br.readBits(6)
+			bitz, err = it.br.readBits(6)
 			if err != nil {
 				it.err = err
 				return false
 			}
-			mbits := uint8(bits)
+			mbits := uint8(bitz)
 			// 0 significant bits here means we overflowed and we actually need 64; see comment in encoder
 			if mbits == 0 {
 				mbits = 64
@@ -479,13 +492,13 @@ func (it *xorIterator) readValue() bool {
 		}
 
 		mbits := int(64 - it.leading - it.trailing)
-		bits, err := it.br.readBits(mbits)
+		bitz, err := it.br.readBits(mbits)
 		if err != nil {
 			it.err = err
 			return false
 		}
 		vbits := math.Float64bits(it.val)
-		vbits ^= (bits << it.trailing)
+		vbits ^= bitz << it.trailing
 		it.val = math.Float64frombits(vbits)
 	}
 
