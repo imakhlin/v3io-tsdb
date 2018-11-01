@@ -48,17 +48,29 @@ type TestConfig struct {
 	values         []float64
 	queryFunc      string
 	queryStep      int64
-	expectedMin    []float64
-	expectedMax    []float64
-	expectedCount  []int
-	expectedSum    []float64
-	expectedAvg    []float64
-	expectFail     bool
+	expected       *expectedResult
 	ignoreReason   string
 	v3ioConfig     *config.V3ioConfig
 	logger         logger.Logger
 	tsdbAggregates string
 	setup          func() (*tsdb.V3ioAdapter, error, func())
+}
+
+type expectedResult struct {
+	values  map[string][]interface{}
+	failure bool
+}
+
+func newExpectedResult(numOfBuckets int) *expectedResult {
+	er := expectedResult{}
+	er.values = make(map[string][]interface{})
+	er.values["count"] = makeAndInitFloatArray(0, numOfBuckets)
+	er.values["sum"] = makeAndInitFloatArray(0, numOfBuckets)
+	er.values["min"] = makeAndInitFloatArray(math.Inf(1), numOfBuckets)
+	er.values["max"] = makeAndInitFloatArray(math.Inf(-1), numOfBuckets)
+	er.values["avg"] = makeAndInitFloatArray(math.NaN(), numOfBuckets)
+
+	return &er
 }
 
 type metricContext struct {
@@ -108,11 +120,7 @@ func t1Config(testCtx *testing.T) *TestConfig {
 		numMetrics:     1,
 		numLabels:      1,
 		values:         testValues,
-		expectedCount:  make([]int, numOfBuckets),
-		expectedMin:    makeAndInitFloatArray(math.Inf(1), numOfBuckets),
-		expectedMax:    makeAndInitFloatArray(math.Inf(-1), numOfBuckets),
-		expectedSum:    make([]float64, numOfBuckets),
-		expectedAvg:    make([]float64, numOfBuckets),
+		expected:       newExpectedResult(numOfBuckets),
 		queryFunc:      testAggregates,
 		queryStep:      queryStep,
 		tsdbAggregates: testAggregates, // Create DB with all required aggregates
@@ -147,11 +155,7 @@ func t2Config(testCtx *testing.T) *TestConfig {
 		numMetrics:     1,
 		numLabels:      1,
 		values:         testValues,
-		expectedCount:  make([]int, numOfBuckets),
-		expectedMin:    makeAndInitFloatArray(math.Inf(1), numOfBuckets),
-		expectedMax:    makeAndInitFloatArray(math.Inf(-1), numOfBuckets),
-		expectedSum:    make([]float64, numOfBuckets),
-		expectedAvg:    make([]float64, numOfBuckets),
+		expected:       newExpectedResult(numOfBuckets),
 		queryFunc:      testAggregates,
 		queryStep:      queryStep,
 		tsdbAggregates: "", // create DB without aggregates (use RAW data)
@@ -186,11 +190,7 @@ func t3Config(testCtx *testing.T) *TestConfig {
 		numMetrics:     1,
 		numLabels:      1,
 		values:         testValues,
-		expectedCount:  make([]int, numOfBuckets),
-		expectedMin:    makeAndInitFloatArray(math.Inf(1), numOfBuckets),
-		expectedMax:    makeAndInitFloatArray(math.Inf(-1), numOfBuckets),
-		expectedSum:    make([]float64, numOfBuckets),
-		expectedAvg:    make([]float64, numOfBuckets),
+		expected:       newExpectedResult(numOfBuckets),
 		queryFunc:      testAggregates,
 		queryStep:      queryStep,
 		tsdbAggregates: "", // create DB without aggregates (use RAW data)
@@ -265,7 +265,7 @@ func testAggregatesCase(t *testing.T, testConfig *TestConfig) {
 	actualMin := makeAndInitFloatArray(math.Inf(1), numOfBuckets)
 	actualMax := makeAndInitFloatArray(math.Inf(-1), numOfBuckets)
 
-	actualCount := make([]int, numOfBuckets)
+	actualCount := makeAndInitFloatArray(0.0, numOfBuckets)
 	actualSum := makeAndInitFloatArray(0.0, numOfBuckets)
 	actualAvg := makeAndInitFloatArray(0.0, numOfBuckets)
 
@@ -299,7 +299,7 @@ func testAggregatesCase(t *testing.T, testConfig *TestConfig) {
 			case "max":
 				actualMax[bucket] = v
 			case "count":
-				actualCount[bucket] = int(v)
+				actualCount[bucket] = float64(v)
 			case "sum":
 				actualSum[bucket] = v
 			case "avg":
@@ -314,11 +314,11 @@ func testAggregatesCase(t *testing.T, testConfig *TestConfig) {
 		}
 	}
 
-	assert.ElementsMatch(t, testConfig.expectedMin, actualMin, "Minimal value is not as expected")
-	assert.ElementsMatch(t, testConfig.expectedMax, actualMax, "Maximal value is not as expected")
-	assert.ElementsMatch(t, testConfig.expectedCount, actualCount, "Count value is not as expected")
-	assert.ElementsMatch(t, testConfig.expectedSum, actualSum, "Sum value is not as expected")
-	assert.ElementsMatch(t, testConfig.expectedAvg, actualAvg, "Average value is not as expected")
+	assert.ElementsMatch(t, testConfig.expected.values["min"], actualMin, "Minimal value is not as expected")
+	assert.ElementsMatch(t, testConfig.expected.values["max"], actualMax, "Maximal value is not as expected")
+	assert.ElementsMatch(t, testConfig.expected.values["count"], actualCount, "Count value is not as expected")
+	assert.ElementsMatch(t, testConfig.expected.values["sum"], actualSum, "Sum value is not as expected")
+	assert.ElementsMatch(t, testConfig.expected.values["avg"], actualAvg, "Average value is not as expected")
 }
 
 func nanosToMillis(nanos int64) int64 {
@@ -355,12 +355,12 @@ func generateData(t *testing.T, testConfig *TestConfig, adapter *tsdb.V3ioAdapte
 		}
 
 		i := j / numOfValuesPerStep
-		testConfig.expectedCount[i] = testConfig.expectedCount[i] + 1
-		testConfig.expectedSum[i] = testConfig.expectedSum[i] + v
-		testConfig.expectedMin[i] = math.Min(testConfig.expectedMin[i], v)
-		testConfig.expectedMax[i] = math.Max(testConfig.expectedMax[i], v)
-		testConfig.expectedAvg[i] = testConfig.expectedSum[i] / float64(testConfig.expectedCount[i])
-
+		testConfig.expected.values["count"][i] = testConfig.expected.values["count"][i].(float64) + 1
+		testConfig.expected.values["sum"][i] = testConfig.expected.values["sum"][i].(float64) + v
+		testConfig.expected.values["min"][i] = math.Min(testConfig.expected.values["min"][i].(float64), v)
+		testConfig.expected.values["max"][i] = math.Max(testConfig.expected.values["max"][i].(float64), v)
+		testConfig.expected.values["avg"][i] = testConfig.expected.values["sum"][i].(float64) / testConfig.expected.values["count"][i].(float64)
+		
 		index = (index + 1) % numTestValues
 		j++
 	}
@@ -395,11 +395,10 @@ func writeNext(app tsdb.Appender, metrics []*metricContext, t int64, v float64) 
 	return nil
 }
 
-func makeAndInitFloatArray(initWith float64, length int) []float64 {
-	floats := make([]float64, length)
-	for i := range floats {
-		floats[i] = initWith
+func makeAndInitFloatArray(initWith float64, length int) (result []interface{}) {
+	result = make([]interface{}, length)
+	for i := range result {
+		result[i] = initWith
 	}
-
-	return floats
+	return
 }
